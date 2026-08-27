@@ -52,24 +52,18 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
     }
 
     /**
-     * Returns the raw factory class whose instances are used as the parent variable
-     * in child-node helper methods (e.g. {@code ForEachNodeFactory}, {@code CompositeContextNodeFactory}).
-     * Subclasses that declare a {@code factoryClass()} method should override this to return the same value.
-     * The default returns {@code null}, which falls back to inlining child nodes without extraction.
+     * Returns the factory class used to build this composite node
+     * (e.g. {@code ForEachNodeFactory}, {@code CompositeContextNodeFactory}).
+     * Used both when emitting the factory variable and when typing the parameter
+     * of each per-child helper method.
      */
-    protected Class<?> childFactoryClass() {
-        return null;
-    }
+    protected abstract Class<?> factoryClass();
 
     /**
      * Visits child nodes of a composite node. Each child's statements are extracted
      * into a dedicated private helper method on the generated XxxProcess class so that
      * no single method can approach the JVM 64 KB bytecode limit, regardless of how
      * many children the composite node contains.
-     *
-     * <p>
-     * If {@link #childFactoryClass()} returns {@code null} (e.g. for composite types
-     * that do not expose a known factory class), children are emitted inline as before.
      *
      * @param factoryField the local-variable name of the parent composite node factory
      * @param nodes the child nodes to visit
@@ -78,17 +72,11 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
      * @param metadata accumulates the extracted helper methods
      */
     protected <U extends Node> void visitNodes(String factoryField, U[] nodes, BlockStmt body, VariableScope variableScope, ProcessMetaData metadata) {
-        Class<?> parentFactoryClass = childFactoryClass();
+        Class<?> parentFactoryClass = factoryClass();
 
         for (U node : nodes) {
             AbstractNodeVisitor<U> visitor = (AbstractNodeVisitor<U>) nodevisitorService.findNodeVisitor(node.getClass());
             if (visitor == null) {
-                continue;
-            }
-
-            if (parentFactoryClass == null) {
-                // Fallback: emit inline (pre-existing behaviour for unknown factory types).
-                visitor.visitNodeEntryPoint(factoryField, node, body, variableScope, metadata);
                 continue;
             }
 

@@ -54,7 +54,7 @@ public class ForEachNodeVisitor extends AbstractCompositeNodeVisitor<ForEachNode
     }
 
     @Override
-    protected Class<?> childFactoryClass() {
+    protected Class<?> factoryClass() {
         return ForEachNodeFactory.class;
     }
 
