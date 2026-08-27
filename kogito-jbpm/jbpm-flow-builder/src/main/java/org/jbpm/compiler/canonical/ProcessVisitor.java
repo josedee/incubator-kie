@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import org.jbpm.compiler.canonical.builtin.ReturnValueEvaluatorBuilderService;
 import org.jbpm.compiler.canonical.descriptors.ExpressionUtils;
@@ -255,9 +254,6 @@ public class ProcessVisitor extends AbstractVisitor {
                 Context exceptionContext = ((ContextContainer) node).getDefaultContext(ExceptionScope.EXCEPTION_SCOPE);
                 visitContextExceptionScope(exceptionContext, nodeBody);
             }
-            if (node instanceof NodeContainer) {
-                visitSubExceptionScope(((NodeContainer) node).getNodes(), nodeBody);
-            }
 
             String nodeKey = visitor.getNodeKey();
             String helperName = "build" + Character.toUpperCase(nodeKey.charAt(0)) + nodeKey.substring(1) + node.getId().toSanitizeString();
@@ -359,17 +355,4 @@ public class ProcessVisitor extends AbstractVisitor {
         }
     }
 
-    private void visitSubExceptionScope(org.kie.api.definition.process.Node[] nodes, BlockStmt body) {
-        Stream.of(nodes)
-                .peek(node -> {
-                    //recursively handle subprocesses exception scope
-                    if (node instanceof NodeContainer) {
-                        visitSubExceptionScope(((NodeContainer) node).getNodes(), body);
-                    }
-                })
-                .filter(ContextContainer.class::isInstance)
-                .map(ContextContainer.class::cast)
-                .map(container -> container.getDefaultContext(ExceptionScope.EXCEPTION_SCOPE))
-                .forEach(context -> visitContextExceptionScope(context, body));
-    }
 }
