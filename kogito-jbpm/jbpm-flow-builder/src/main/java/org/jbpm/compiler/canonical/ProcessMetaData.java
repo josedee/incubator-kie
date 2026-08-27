@@ -66,6 +66,7 @@ public class ProcessMetaData {
     private Set<CompilationUnit> generatedListeners = new HashSet<>();
 
     private List<MethodDeclaration> processHelperMethods = new ArrayList<>();
+    private Set<String> processHelperImports = new HashSet<>();
 
     public ProcessMetaData(String processId, String extractedProcessId, String processName, String processVersion, String processPackageName, String processClassName) {
         super();
@@ -222,8 +223,19 @@ public class ProcessMetaData {
         return processHelperMethods;
     }
 
+    public Set<String> getProcessHelperImports() {
+        return processHelperImports;
+    }
+
     public void addProcessHelperMethod(MethodDeclaration method) {
         processHelperMethods.add(method);
+    }
+
+    public void addProcessHelperMethod(MethodDeclaration method, Class<?> parameterImport) {
+        processHelperMethods.add(method);
+        if (parameterImport != null) {
+            processHelperImports.add(parameterImport.getName());
+        }
     }
 
     @Override

@@ -247,6 +247,7 @@ public class ProcessCodeGenerationSupport {
         ClassOrInterfaceDeclaration cls = compilationUnit.findFirst(ClassOrInterfaceDeclaration.class).get();
 
         processMetaData.getProcessHelperMethods().forEach(cls::addMember);
+        processMetaData.getProcessHelperImports().forEach(compilationUnit::addImport);
 
         if (!processMetaData.getTriggers().isEmpty()) {
 

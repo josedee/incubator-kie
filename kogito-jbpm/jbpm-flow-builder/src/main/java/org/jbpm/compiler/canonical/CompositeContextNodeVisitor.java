@@ -45,6 +45,11 @@ public class CompositeContextNodeVisitor<T extends CompositeContextNode> extends
         return CompositeContextNodeFactory.class;
     }
 
+    @Override
+    protected Class<?> childFactoryClass() {
+        return factoryClass();
+    }
+
     protected String factoryMethod() {
         return getNodeKey();
     }

@@ -24,18 +24,34 @@ import java.util.Collection;
 import java.util.List;
 
 import org.drools.codegen.common.GeneratedFile;
+import org.drools.codegen.common.GeneratedFileType.Category;
+import org.drools.compiler.compiler.io.memory.MemoryFileSystem;
 import org.junit.jupiter.api.Test;
 import org.kie.kogito.codegen.api.context.KogitoBuildContext;
 import org.kie.kogito.codegen.api.context.impl.JavaKogitoBuildContext;
 import org.kie.kogito.codegen.core.io.CollectedResourceProducer;
+import org.kie.memorycompiler.CompilationResult;
+import org.kie.memorycompiler.JavaCompiler;
+import org.kie.memorycompiler.JavaCompilerFactory;
+import org.kie.memorycompiler.JavaConfiguration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 public class ProcessGeneratorCodeSizeTest {
 
     private static final Path BASE_PATH = Paths.get("src/test/resources/").toAbsolutePath();
 
+    private static final JavaCompiler JAVA_COMPILER =
+            JavaCompilerFactory.loadCompiler(JavaConfiguration.CompilerType.NATIVE, "17");
+
+    /**
+     * Regression test for https://github.com/apache/incubator-kie-issues/issues/2229.
+     *
+     * Generates Java source from a 754-node BPMN and then compiles it in-memory.
+     * Before the fix, the single process() method exceeded the JVM 64 KB bytecode
+     * limit and the compiler threw an error. This test will fail with the unfixed
+     * code because the compiler returns errors, not because codegen throws.
+     */
     @Test
     void largeBpmnCompilesSuccessfully() {
         Path bpmnFile = BASE_PATH.resolve("codetoolarge/repro-fails.bpmn");
@@ -48,11 +64,48 @@ public class ProcessGeneratorCodeSizeTest {
                 context,
                 CollectedResourceProducer.fromFiles(BASE_PATH, bpmnFile.toFile()));
 
-        assertThatCode(() -> {
-            Collection<GeneratedFile> generatedFiles = codegen.generate();
-            assertThat(generatedFiles).isNotEmpty();
-        }).as("Code generation of a large BPMN with so many nodes must not throw a 'code too large' error")
-                .doesNotThrowAnyException();
+        Collection<GeneratedFile> generatedFiles = codegen.generate();
+        assertThat(generatedFiles).isNotEmpty();
+
+        // Compile only the XxxProcess.java file — the one that contains the process()
+        // method and previously triggered the 64 KB method-bytecode limit.
+        // We do not compile the full application graph (which would require Kogito
+        // runtime classes), just the generated process class against its own classpath.
+        // ProcessCodegen uses custom GeneratedFileType instances (PROCESS_TYPE,
+        // PROCESS_INSTANCE_TYPE, etc.) that all share Category.SOURCE, so filter
+        // on category rather than the singleton GeneratedFileType.SOURCE object.
+        List<GeneratedFile> processClassFiles = generatedFiles.stream()
+                .filter(f -> f.type().category() == Category.SOURCE)
+                .filter(f -> f.relativePath().endsWith("Process.java"))
+                .toList();
+
+        assertThat(processClassFiles)
+                .as("Code generation must produce at least one XxxProcess.java source file")
+                .isNotEmpty();
+
+        MemoryFileSystem srcMfs = new MemoryFileSystem();
+        MemoryFileSystem trgMfs = new MemoryFileSystem();
+        String[] sourceNames = new String[processClassFiles.size()];
+        for (int i = 0; i < processClassFiles.size(); i++) {
+            GeneratedFile f = processClassFiles.get(i);
+            sourceNames[i] = f.relativePath();
+            srcMfs.write(f.relativePath(), f.contents());
+        }
+
+        CompilationResult result = JAVA_COMPILER.compile(
+                sourceNames, srcMfs, trgMfs, getClass().getClassLoader());
+
+        // Filter out errors that are purely missing-symbol errors caused by Kogito
+        // application classes not being on the isolated compiler classpath.
+        // The only error we care about is "code too large", which would appear as
+        // an error on the process() method itself.
+        long codeTooLargeErrors = java.util.Arrays.stream(result.getErrors())
+                .filter(e -> e.getMessage() != null && e.getMessage().contains("code too large"))
+                .count();
+
+        assertThat(codeTooLargeErrors)
+                .as("The generated process() method must not exceed the JVM 64 KB bytecode limit")
+                .isZero();
     }
 
     @Test

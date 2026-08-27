@@ -23,7 +23,14 @@ import org.jbpm.process.core.context.variable.VariableScope;
 import org.jbpm.workflow.core.node.CompositeContextNode;
 import org.kie.api.definition.process.Node;
 
+import com.github.javaparser.ast.Modifier;
+import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
+import com.github.javaparser.ast.type.VoidType;
 
 public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNode> extends AbstractNodeVisitor<T> {
 
@@ -34,13 +41,71 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
         this.nodevisitorService = new NodeVisitorBuilderService(classLoader);
     }
 
+    /**
+     * Returns the raw factory class whose instances are used as the parent variable
+     * in child-node helper methods (e.g. {@code ForEachNodeFactory}, {@code CompositeContextNodeFactory}).
+     * Subclasses that declare a {@code factoryClass()} method should override this to return the same value.
+     * The default returns {@code null}, which falls back to inlining child nodes without extraction.
+     */
+    protected Class<?> childFactoryClass() {
+        return null;
+    }
+
+    /**
+     * Visits child nodes of a composite node. Each child's statements are extracted
+     * into a dedicated private helper method on the generated XxxProcess class so that
+     * no single method can approach the JVM 64 KB bytecode limit, regardless of how
+     * many children the composite node contains.
+     *
+     * <p>
+     * If {@link #childFactoryClass()} returns {@code null} (e.g. for composite types
+     * that do not expose a known factory class), children are emitted inline as before.
+     *
+     * @param factoryField the local-variable name of the parent composite node factory
+     * @param nodes the child nodes to visit
+     * @param body the parent node's method body — receives only the helper call statements
+     * @param variableScope the variable scope visible to child nodes
+     * @param metadata accumulates the extracted helper methods
+     */
     protected <U extends Node> void visitNodes(String factoryField, U[] nodes, BlockStmt body, VariableScope variableScope, ProcessMetaData metadata) {
+        Class<?> parentFactoryClass = childFactoryClass();
+
         for (U node : nodes) {
             AbstractNodeVisitor<U> visitor = (AbstractNodeVisitor<U>) nodevisitorService.findNodeVisitor(node.getClass());
             if (visitor == null) {
                 continue;
             }
-            visitor.visitNodeEntryPoint(factoryField, node, body, variableScope, metadata);
+
+            if (parentFactoryClass == null) {
+                // Fallback: emit inline (pre-existing behaviour for unknown factory types).
+                visitor.visitNodeEntryPoint(factoryField, node, body, variableScope, metadata);
+                continue;
+            }
+
+            // Extract this child's statements into a dedicated private helper method.
+            // The helper receives the parent composite factory as its single parameter
+            // so that calls like `forEachNode_X.humanTaskNode(...)` remain valid.
+            BlockStmt childBody = new BlockStmt();
+            visitor.visitNodeEntryPoint(factoryField, node, childBody, variableScope, metadata);
+
+            String nodeKey = visitor.getNodeKey();
+            String helperName = "build" + Character.toUpperCase(nodeKey.charAt(0)) + nodeKey.substring(1)
+                    + node.getId().toSanitizeString();
+
+            MethodDeclaration helper = new MethodDeclaration()
+                    .setModifiers(Modifier.Keyword.PRIVATE)
+                    .setType(new VoidType())
+                    .setName(helperName)
+                    .addParameter(new Parameter(
+                            new ClassOrInterfaceType(null, parentFactoryClass.getSimpleName()),
+                            factoryField))
+                    .setBody(childBody);
+
+            metadata.addProcessHelperMethod(helper, parentFactoryClass);
+
+            // The parent body only gets the one-line call to the helper.
+            body.addStatement(new MethodCallExpr(null, helperName)
+                    .addArgument(new NameExpr(factoryField)));
         }
     }
 

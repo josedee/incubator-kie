@@ -151,7 +151,9 @@ public class ProcessGenerator {
         CompilationUnit compilationUnit = new CompilationUnit(packageName);
         compilationUnit.addImport(modelTypeName);
         compilationUnit.getTypes().add(classDeclaration());
-        processExecutable.generate().getGeneratedClassModel().getImports().forEach(compilationUnit::addImport);
+        ProcessMetaData processMetaData = processExecutable.generate();
+        processMetaData.getGeneratedClassModel().getImports().forEach(compilationUnit::addImport);
+        processMetaData.getProcessHelperImports().forEach(compilationUnit::addImport);
         return compilationUnit;
     }
 
