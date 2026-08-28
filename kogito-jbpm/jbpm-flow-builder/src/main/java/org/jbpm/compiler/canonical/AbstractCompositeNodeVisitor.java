@@ -89,11 +89,11 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
                     .setType(new VoidType())
                     .setName(helperName)
                     .addParameter(new Parameter(
-                            new ClassOrInterfaceType(null, factoryClass().getSimpleName()),
+                            new ClassOrInterfaceType(null, factoryClass().getCanonicalName()),
                             factoryField))
                     .setBody(childBody);
 
-            metadata.addProcessHelperMethod(helper, factoryClass());
+            metadata.addProcessHelperMethod(helper);
 
             body.addStatement(new MethodCallExpr(null, helperName)
                     .addArgument(new NameExpr(factoryField)));

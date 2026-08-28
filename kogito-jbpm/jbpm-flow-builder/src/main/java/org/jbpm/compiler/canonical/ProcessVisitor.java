@@ -104,7 +104,7 @@ public class ProcessVisitor extends AbstractVisitor {
                 .setType(new VoidType())
                 .setName(name)
                 .addParameter(new Parameter(
-                        new ClassOrInterfaceType(null, RuleFlowProcessFactory.class.getSimpleName()),
+                        new ClassOrInterfaceType(null, RuleFlowProcessFactory.class.getCanonicalName()),
                         FACTORY_PARAM_NAME))
                 .setBody(body);
     }
