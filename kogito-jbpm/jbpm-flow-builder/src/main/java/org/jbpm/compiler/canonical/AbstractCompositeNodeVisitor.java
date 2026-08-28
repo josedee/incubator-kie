@@ -51,45 +51,18 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
         this.nodevisitorService = new NodeVisitorBuilderService(classLoader);
     }
 
-    /**
-     * Returns the factory class used to build this composite node
-     * (e.g. {@code ForEachNodeFactory}, {@code CompositeContextNodeFactory}).
-     * Used both when emitting the factory variable and when typing the parameter
-     * of each per-child helper method.
-     */
     protected abstract Class<?> factoryClass();
 
-    /**
-     * Visits child nodes of a composite node. Each child's statements are extracted
-     * into a dedicated private helper method on the generated XxxProcess class so that
-     * no single method can approach the JVM 64 KB bytecode limit, regardless of how
-     * many children the composite node contains.
-     *
-     * @param factoryField the local-variable name of the parent composite node factory
-     * @param nodes the child nodes to visit
-     * @param body the parent node's method body — receives only the helper call statements
-     * @param variableScope the variable scope visible to child nodes
-     * @param metadata accumulates the extracted helper methods
-     */
     protected <U extends Node> void visitNodes(String factoryField, U[] nodes, BlockStmt body, VariableScope variableScope, ProcessMetaData metadata) {
-        Class<?> parentFactoryClass = factoryClass();
-
         for (U node : nodes) {
             AbstractNodeVisitor<U> visitor = (AbstractNodeVisitor<U>) nodevisitorService.findNodeVisitor(node.getClass());
             if (visitor == null) {
                 continue;
             }
 
-            // Extract this child's statements into a dedicated private helper method.
-            // The helper receives the parent composite factory as its single parameter
-            // so that calls like `forEachNode_X.humanTaskNode(...)` remain valid.
             BlockStmt childBody = new BlockStmt();
             visitor.visitNodeEntryPoint(factoryField, node, childBody, variableScope, metadata);
 
-            // Emit exception scope for this child node into its own helper body,
-            // so that the generated variable reference (e.g. compositeContextNode_30B57501...)
-            // is in scope. Previously this was emitted by ProcessVisitor.visitSubExceptionScope()
-            // into the *parent* body, where the variable was not declared.
             if (node instanceof ContextContainer) {
                 Object exceptionScope = ((ContextContainer) node).getDefaultContext(ExceptionScope.EXCEPTION_SCOPE);
                 if (exceptionScope instanceof ExceptionScope) {
@@ -116,13 +89,12 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
                     .setType(new VoidType())
                     .setName(helperName)
                     .addParameter(new Parameter(
-                            new ClassOrInterfaceType(null, parentFactoryClass.getSimpleName()),
+                            new ClassOrInterfaceType(null, factoryClass().getSimpleName()),
                             factoryField))
                     .setBody(childBody);
 
-            metadata.addProcessHelperMethod(helper, parentFactoryClass);
+            metadata.addProcessHelperMethod(helper, factoryClass());
 
-            // The parent body only gets the one-line call to the helper.
             body.addStatement(new MethodCallExpr(null, helperName)
                     .addArgument(new NameExpr(factoryField)));
         }

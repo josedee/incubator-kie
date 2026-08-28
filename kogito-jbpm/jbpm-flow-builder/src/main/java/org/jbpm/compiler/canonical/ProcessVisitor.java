@@ -98,7 +98,7 @@ public class ProcessVisitor extends AbstractVisitor {
         returnValueEvaluatorBuilderService = ReturnValueEvaluatorBuilderService.instance(contextClassLoader);
     }
 
-    private static MethodDeclaration buildHelperMethod(String name, BlockStmt helperBody) {
+    private static MethodDeclaration buildHelperMethod(String name, BlockStmt body) {
         return new MethodDeclaration()
                 .setModifiers(Modifier.Keyword.PRIVATE)
                 .setType(new VoidType())
@@ -106,7 +106,7 @@ public class ProcessVisitor extends AbstractVisitor {
                 .addParameter(new Parameter(
                         new ClassOrInterfaceType(null, RuleFlowProcessFactory.class.getSimpleName()),
                         FACTORY_PARAM_NAME))
-                .setBody(helperBody);
+                .setBody(body);
     }
 
     public void visitProcess(WorkflowProcess process, MethodDeclaration processMethod, ProcessMetaData metadata) {
@@ -328,13 +328,11 @@ public class ProcessVisitor extends AbstractVisitor {
     }
 
     private void visitExceptionScope(Process process, BlockStmt body) {
-        if (!(process instanceof org.jbpm.workflow.core.WorkflowProcess)) {
+        if (!(process instanceof org.jbpm.workflow.core.WorkflowProcess workflowProcess)) {
             return;
         }
-        org.jbpm.workflow.core.WorkflowProcess workflowProcess = (org.jbpm.workflow.core.WorkflowProcess) process;
         Context context = workflowProcess.getDefaultContext(ExceptionScope.EXCEPTION_SCOPE);
-        // Root process exception scope only — sub-process node exception scopes are
-        // handled inside visitNodes() where the node variable is still in scope.
+        // Root process exception scope only
         visitContextExceptionScope(context, body);
     }
 
