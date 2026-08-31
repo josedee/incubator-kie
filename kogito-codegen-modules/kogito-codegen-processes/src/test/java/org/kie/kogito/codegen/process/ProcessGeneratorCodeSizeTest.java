@@ -32,8 +32,6 @@ import org.kie.kogito.codegen.api.context.impl.JavaKogitoBuildContext;
 import org.kie.kogito.codegen.core.io.CollectedResourceProducer;
 import org.kie.memorycompiler.CompilationResult;
 import org.kie.memorycompiler.JavaCompiler;
-import org.kie.memorycompiler.JavaCompilerFactory;
-import org.kie.memorycompiler.JavaConfiguration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,17 +39,8 @@ public class ProcessGeneratorCodeSizeTest {
 
     private static final Path BASE_PATH = Paths.get("src/test/resources/").toAbsolutePath();
 
-    private static final JavaCompiler JAVA_COMPILER =
-            JavaCompilerFactory.loadCompiler(JavaConfiguration.CompilerType.NATIVE, "17");
+    private static final JavaCompiler JAVA_COMPILER = JavaCompiler.createNativeCompiler();
 
-    /**
-     * Regression test for https://github.com/apache/incubator-kie-issues/issues/2229.
-     *
-     * Generates Java source from a 754-node BPMN and then compiles it in-memory.
-     * Before the fix, the single process() method exceeded the JVM 64 KB bytecode
-     * limit and the compiler threw an error. This test will fail with the unfixed
-     * code because the compiler returns errors, not because codegen throws.
-     */
     @Test
     void largeBpmnCompilesSuccessfully() {
         Path bpmnFile = BASE_PATH.resolve("processcodesize/LargeSingleProcess.bpmn");
@@ -67,13 +56,6 @@ public class ProcessGeneratorCodeSizeTest {
         Collection<GeneratedFile> generatedFiles = codegen.generate();
         assertThat(generatedFiles).isNotEmpty();
 
-        // Compile only the XxxProcess.java file — the one that contains the process()
-        // method and previously triggered the 64 KB method-bytecode limit.
-        // We do not compile the full application graph (which would require Kogito
-        // runtime classes), just the generated process class against its own classpath.
-        // ProcessCodegen uses custom GeneratedFileType instances (PROCESS_TYPE,
-        // PROCESS_INSTANCE_TYPE, etc.) that all share Category.SOURCE, so filter
-        // on category rather than the singleton GeneratedFileType.SOURCE object.
         List<GeneratedFile> processClassFiles = generatedFiles.stream()
                 .filter(f -> f.type().category() == Category.SOURCE)
                 .filter(f -> f.relativePath().endsWith("Process.java"))
@@ -95,10 +77,6 @@ public class ProcessGeneratorCodeSizeTest {
         CompilationResult result = JAVA_COMPILER.compile(
                 sourceNames, srcMfs, trgMfs, getClass().getClassLoader());
 
-        // Filter out errors that are purely missing-symbol errors caused by Kogito
-        // application classes not being on the isolated compiler classpath.
-        // The only error we care about is "code too large", which would appear as
-        // an error on the process() method itself.
         long codeTooLargeErrors = java.util.Arrays.stream(result.getErrors())
                 .filter(e -> e.getMessage() != null && e.getMessage().contains("code too large"))
                 .count();
@@ -118,19 +96,19 @@ public class ProcessGeneratorCodeSizeTest {
         org.jbpm.compiler.canonical.ProcessMetaData metadata = generators.get(0).generate();
 
         assertThat(metadata.getProcessHelperMethods())
-                .as("Each node must have its own helper method, plus one buildConnections helper")
-                .hasSizeGreaterThan(750);
+                .as("756 node helpers + 1 buildConnections helper = 757 total")
+                .hasSize(757);
 
-        // Every helper must be private void with a RuleFlowProcessFactory parameter.
+        // Every helper must be private, non-static, void, with exactly one parameter.
         metadata.getProcessHelperMethods().forEach(m -> {
             assertThat(m.getNameAsString())
-                    .matches("build[A-Z].*|buildConnections");
+                    .matches("build[A-Z].*");
             assertThat(m.isPrivate()).isTrue();
             assertThat(m.isStatic()).isFalse();
             assertThat(m.getParameters()).hasSize(1);
         });
 
-        // Exactly one buildConnections helper
+        // Exactly one buildConnections helper.
         long connectionsHelperCount = metadata.getProcessHelperMethods().stream()
                 .filter(m -> m.getNameAsString().equals("buildConnections"))
                 .count();
@@ -138,13 +116,24 @@ public class ProcessGeneratorCodeSizeTest {
                 .as("All connections must be grouped into exactly one buildConnections helper")
                 .isEqualTo(1);
 
-        // The process() template body must contain only helper call statements
+        // The generated process() method body must consist entirely of helper call
+        // statements — each node delegated to buildXxx(factory) — plus a final
+        // buildConnections(factory) call. The method body is the sole MethodDeclaration
+        // in the ProcessMetaData's CompilationUnit.
         String processBody = metadata.getGeneratedClassModel()
                 .findFirst(com.github.javaparser.ast.body.MethodDeclaration.class)
-                .map(com.github.javaparser.ast.body.MethodDeclaration::toString)
+                .flatMap(com.github.javaparser.ast.body.MethodDeclaration::getBody)
+                .map(Object::toString)
                 .orElse("");
 
-        assertThat(processBody).contains("build");
-        assertThat(processBody).contains("buildConnections(");
+        // Body must contain delegate calls: buildXxx(factory)
+        assertThat(processBody)
+                .as("process() body must contain per-node helper invocations")
+                .containsPattern("build[A-Z]\\w+\\(factory\\)");
+
+        // Body must contain the connection-building delegate call
+        assertThat(processBody)
+                .as("process() body must delegate connections to buildConnections(factory)")
+                .contains("buildConnections(factory)");
     }
 }
