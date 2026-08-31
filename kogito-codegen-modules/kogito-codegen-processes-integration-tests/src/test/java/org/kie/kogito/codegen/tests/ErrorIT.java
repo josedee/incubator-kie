@@ -128,6 +128,70 @@ public class ErrorIT extends AbstractCodegenIT {
                 "EndErrorInSubprocessWithEventSubprocess");
     }
 
+    /**
+     * Regression test for incubator-kie-issues#2229 refactoring.
+     *
+     * Verifies that a boundary error event attached to the InnerSubProcess node itself
+     * (a subProcess node sitting inside OuterSubProcess) is correctly wired after the
+     * visitSubExceptionScope removal. The exception scope of innerSub is now emitted
+     * inside OuterSubProcess's per-node helper method by AbstractCompositeNodeVisitor.
+     */
+    @Test
+    void testBoundaryErrorOnInnerSubProcessNode() throws Exception {
+        Application app = generateCodeProcessesOnly(
+                "error/NestedSubProcessBoundaryErrorOnInnerSubProcess.bpmn2");
+        assertThat(app).isNotNull();
+
+        List<String> completedNames = completedNodesListener(app);
+
+        Process<? extends Model> p = app.get(Processes.class)
+                .processById("NestedSubProcessBoundaryErrorOnInnerSubProcess");
+        ProcessInstance<?> instance = p.createInstance(p.createModel());
+        instance.start();
+
+        assertState(instance, ProcessInstance.STATE_COMPLETED);
+        assertThat(completedNames)
+                .as("InnerTask must run before the error fires")
+                .contains("InnerTask");
+        assertThat(completedNames)
+                .as("HandlerTask must run — boundary on innerSub must be registered")
+                .contains("HandlerTask");
+    }
+
+    /**
+     * Regression test for incubator-kie-issues#2229 refactoring.
+     *
+     * Verifies that a signal boundary event attached to a userTask node (the only
+     * StateBasedNode task type that supports boundary events) inside InnerSubProcess
+     * (itself inside OuterSubProcess) is correctly wired after the visitSubExceptionScope
+     * removal. The event subscription on UserTask must be registered by
+     * AbstractCompositeNodeVisitor when processing InnerSubProcess's child nodes.
+     *
+     * The test sends signal "CancelTask" to the waiting process instance, which fires
+     * the boundary event on UserTask and routes execution to HandlerTask.
+     */
+    @Test
+    void testBoundarySignalOnUserTaskInsideNestedSubProcess() throws Exception {
+        Application app = generateCodeProcessesOnly(
+                "error/NestedSubProcessBoundaryOnUserTask.bpmn2");
+        assertThat(app).isNotNull();
+
+        List<String> completedNames = completedNodesListener(app);
+
+        Process<? extends Model> p = app.get(Processes.class)
+                .processById("NestedSubProcessBoundaryOnUserTask");
+        ProcessInstance<?> instance = p.createInstance(p.createModel());
+        instance.start();
+
+        // UserTask inside InnerSubProcess is now waiting — send signal to fire the boundary
+        instance.send(org.kie.kogito.process.SignalFactory.of("CancelTask", null));
+
+        assertState(instance, ProcessInstance.STATE_COMPLETED);
+        assertThat(completedNames)
+                .as("HandlerTask must run — signal boundary on UserTask inside nested sub must be registered")
+                .contains("HandlerTask");
+    }
+
     private List<String> completedNodesListener(Application app) {
         List<String> completedIds = new ArrayList<>();
         addProcessEventListener(app, new DefaultKogitoProcessEventListener() {
