@@ -22,7 +22,7 @@
   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
   xmlns:drools="http://www.jboss.org/drools" id="_repro" exporter="repro"
   exporterVersion="1.0" targetNamespace="http://www.omg.org/bpmn20">
-  <bpmn2:process id="codeTooLargeRepro" drools:packageName="com.example.repro" name="codeTooLargeRepro"
+  <bpmn2:process id="largeSingleProcess" drools:packageName="com.example.repro" name="largeSingleProcess"
       isExecutable="true" processType="Public">
     <bpmn2:startEvent id="start1" name="Start">
       <bpmn2:outgoing>flow_0</bpmn2:outgoing>
@@ -4557,7 +4557,7 @@
     <bpmn2:sequenceFlow id="flow_754" sourceRef="task753" targetRef="end1" />
   </bpmn2:process>
   <bpmndi:BPMNDiagram id="repro-diagram">
-    <bpmndi:BPMNPlane id="repro-plane" bpmnElement="codeTooLargeRepro">
+    <bpmndi:BPMNPlane id="repro-plane" bpmnElement="largeSingleProcess">
       <bpmndi:BPMNShape id="shape_start1" bpmnElement="start1">
         <dc:Bounds x="50" y="72" width="36" height="36" />
       </bpmndi:BPMNShape>

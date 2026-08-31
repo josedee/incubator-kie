@@ -63,7 +63,7 @@ public abstract class AbstractCompositeNodeVisitor<T extends CompositeContextNod
             BlockStmt childBody = new BlockStmt();
             visitor.visitNodeEntryPoint(factoryField, node, childBody, variableScope, metadata);
 
-            if (node instanceof ContextContainer) {
+            if (node instanceof CompositeContextNode) {
                 Object exceptionScope = ((ContextContainer) node).getDefaultContext(ExceptionScope.EXCEPTION_SCOPE);
                 if (exceptionScope instanceof ExceptionScope) {
                     String nodeId = visitor.getNodeId(node);

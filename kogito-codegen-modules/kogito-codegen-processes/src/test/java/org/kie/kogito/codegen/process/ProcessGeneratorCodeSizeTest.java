@@ -54,7 +54,7 @@ public class ProcessGeneratorCodeSizeTest {
      */
     @Test
     void largeBpmnCompilesSuccessfully() {
-        Path bpmnFile = BASE_PATH.resolve("codetoolarge/repro-fails.bpmn");
+        Path bpmnFile = BASE_PATH.resolve("processcodesize/LargeSingleProcess.bpmn");
 
         KogitoBuildContext context = JavaKogitoBuildContext.builder()
                 .withApplicationProperties(bpmnFile.getParent().toFile())
@@ -111,7 +111,7 @@ public class ProcessGeneratorCodeSizeTest {
     @Test
     void processMetaDataCarriesHelperMethodsForEachNodeAndConnection() {
         List<ProcessExecutableModelGenerator> generators =
-                ProcessGenerationUtils.execModelFromProcessFile("/codetoolarge/repro-fails.bpmn");
+                ProcessGenerationUtils.execModelFromProcessFile("/processcodesize/LargeSingleProcess.bpmn");
 
         assertThat(generators).hasSize(1);
 
